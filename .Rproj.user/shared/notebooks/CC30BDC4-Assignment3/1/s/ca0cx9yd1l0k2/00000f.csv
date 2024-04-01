@@ -1,0 +1,16 @@
+"0","env_concerns <- c(""threxg20"", ""prghrm20"", ""worent20"", ""morimp20"", ""others20"")"
+"0",""
+"0","#create additive index 'enatt20' and 'enatt20_mean' for env_concerns variables, removing '6'"
+"0","Assignment_3 <- Postcoded %>%"
+"0","  filter_at(vars(env_concerns), all_vars(. != 6)) %>%"
+"0","  mutate(enatt20 = rowSums(.[env_concerns], na.rm = TRUE),"
+"0","         enatt20_mean = rowMeans(.[env_concerns], na.rm = TRUE))"
+"2","Warning: Using an external vector in selections was deprecated in tidyselect 1.1.0.
+Please use `all_of()` or `any_of()` instead.
+# Was:
+data %>% select(env_concerns)
+
+# Now:
+data %>% select(all_of(env_concerns))
+
+See <https://tidyselect.r-lib.org/reference/faq-external-vector.html>."

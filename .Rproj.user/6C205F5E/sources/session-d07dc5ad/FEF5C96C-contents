@@ -1,0 +1,378 @@
+---
+title: "Assignment 3"
+subtitle: "GEO865: Advanced Quantitative Methods – SS24"
+author: "Leo Baldiga"
+date: "2024-03-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(haven)
+library(lavaan)
+library(psych)
+library(tidyr)
+library(dplyr)
+library(dm)
+library(writexl)
+library(kableExtra)
+library(webshot2)
+library(ggplot2)
+library(likert)
+library(knitr)
+library(stringr)
+library(scales)
+library(gridExtra)
+```
+
+# Assignment 3: Regression Models Using the ISSP 2020 Data
+
+For this assignment, I will be modeling the relationship between environmental concern and various demographic and socioeconomic variables using linear modeling. The data used for this analysis comes from the 2020 International Social Survey Programme (ISSP) module on environment. The dataset includes responses from 44,1000 adults across 28 Countries.
+
+```{r data, echo= F}
+load(".RData")
+```
+
+```{r countries}
+#A kable table of the countries included in the dataset with the number of respondents from each country, with each column having 7 countries x 4 columns
+country_counts <- Postcoded %>%
+  count(country) %>%
+  mutate(id = row_number())
+
+# Create a data frame to hold the alternating structure
+wide_format <- data.frame(matrix(ncol = 8, nrow = 7))
+colnames(wide_format) <- c("Country", "n", "Country", "n", "Country", "n", "Country", "n")
+
+# Fill the new data frame with country names and counts
+for(i in 1:nrow(country_counts)) {
+  col_index <- ((i - 1) %% 4) * 2 + 1
+  row_index <- ((i - 1) %/% 4) + 1
+  wide_format[row_index, col_index] <- country_counts$country[i]
+  wide_format[row_index, col_index + 1] <- country_counts$n[i]
+}
+
+# Remove NA values and replace them with empty strings for a cleaner table
+wide_format[is.na(wide_format)] <- ""
+
+# Create the table with kable and add columns
+kable_styling(
+  kable(wide_format, format = "html", escape = FALSE, col.names = rep(c("Country", "N"), 4),
+          caption = "Table 1: Number of Respondents from Each Country"),
+  bootstrap_options = c("striped", "hover")
+) %>%
+  column_spec(2, border_right = "2px solid") %>%
+  column_spec(4, border_right = "2px solid") %>%
+  column_spec(6, border_right = "2px solid")
+```
+
+The dataset includes the following Likert Variables, which were measured on a 5-point scale, with 1 being "strongly agree" and 5 being "strongly disagree" with the following statements, 1 indicating the least concern for the environment and 5 indicating the most concern.
+
+-   **threxg20**: Many of the claims about environmental threats are exaggerated.
+-   **prghrm20**: People worry too much about human progress harming the environment.
+-   **worent20**: We worry too much about the future of the environment and not enough about prices and jobs today.
+-   **morimp20**: There are more important things to do in life than protect the environment.
+-   **others20**: There is no point in doing what I can for the environment unless others do the same.
+
+A higher score on these variables indicates a higher concern for the environment. Therefore, the variables were summed to create a composite variable, **enatt20**, which ranges from 5 to 25, with higher scores indicating a higher concern for the environment.
+
+```{r likerts and additive index}
+env_concerns <- c("threxg20", "prghrm20", "worent20", "morimp20", "others20")
+
+#create additive index 'enatt20' and 'enatt20_mean' for env_concerns variables, removing '6'
+Assignment_3 <- Postcoded %>%
+  filter_at(vars(env_concerns), all_vars(. != 6)) %>%
+  mutate(enatt20 = rowSums(.[env_concerns], na.rm = TRUE),
+         enatt20_mean = rowMeans(.[env_concerns], na.rm = TRUE))
+```
+
+```{r country_means, echo= F}
+#Kable Table of the mean scores of each country
+
+#'country' and 'enatt20_mean' with country names and mean values
+country_means <- Assignment_3 %>%
+  group_by(country) %>%
+  summarise(enatt20_mean = round(mean(enatt20_mean, na.rm = TRUE), 2)) %>%
+  mutate(id = row_number())
+
+# Create a data frame to hold the alternating structure
+wide_format <- data.frame(matrix(ncol = 8, nrow = 7))
+colnames(wide_format) <- c("Country", "Mean", "Country", "Mean", "Country", "Mean", "Country", "Mean")
+
+# Fill the new data frame with country names and mean values
+for(i in 1:nrow(country_means)) {
+  col_index <- ((i - 1) %% 4) * 2 + 1
+  row_index <- ((i - 1) %/% 4) + 1
+  wide_format[row_index, col_index] <- country_means$country[i]
+  wide_format[row_index, col_index + 1] <- country_means$enatt20_mean[i]
+}
+
+# Remove NA values and replace them with empty strings for a cleaner table
+wide_format[is.na(wide_format)] <- ""
+
+# Create the table with kable and add columns
+kable_styling(
+  kable(wide_format, format = "html", escape = FALSE, col.names = rep(c("Country", "Mean"), 4),
+        caption = "Table 2: Mean of 'enatt20_mean' for Each Country"),
+  bootstrap_options = c("striped", "hover")
+) %>%
+  column_spec(2, border_right = "2px solid") %>%
+  column_spec(4, border_right = "2px solid") %>%
+  column_spec(6, border_right = "2px solid")
+
+hist_enatt <- ggplot(Assignment_3, aes(x = enatt20_mean)) +
+  geom_histogram(fill = "salmon") +
+  ggtitle("Histogram of Environmental Concerns") +
+  labs(x = "Environmental Concerns", y = "Frequency") +
+  theme_minimal()
+print(hist_enatt)
+qq_enatt <- ggplot(Assignment_3, aes(sample = enatt20_mean)) +
+  stat_qq() +
+  stat_qq_line() +
+  labs(title = "Environmental Concerns") +
+  theme_minimal()
+print(qq_enatt)
+
+```
+
+The following demographic and socioeconomic variables are also included in the dataset:
+
+-   **zincs20**: Respondent's Monthly gross Household income as a z score (continuous variable) Z scores calculated for each country, with the mean and standard deviation of the monthly gross household income for each country.
+
+```{r income_zscores}
+inc_vars <- names(Postcoded)[grepl("_INC", names(Postcoded))]
+rinc_vars <- names(Postcoded)[grepl("_RINC", names(Postcoded))]
+
+Assignment_3 <- Assignment_3 %>%
+  mutate(across(all_of(inc_vars), ~ ifelse(. < 0, NA, .))) %>%
+  mutate(across(all_of(rinc_vars), ~ ifelse(. < 0, NA, .)))
+
+#Combine the INC and RINC variables into a single variable for monthly combined income, replacing NAs in INC vars with the RINC values
+Assignment_3 <- Assignment_3 %>%
+  mutate(
+    AT_CINC = ifelse(is.na(AT_INC), AT_RINC, AT_INC),
+    AU_CINC = ifelse(is.na(AU_INC), AU_RINC, AU_INC),
+    CH_CINC = ifelse(is.na(CH_INC), CH_RINC, CH_INC),
+    CN_CINC = ifelse(is.na(CN_INC), CN_RINC, CN_INC),
+    DE_CINC = ifelse(is.na(DE_INC), DE_RINC, DE_INC),
+    DK_CINC = ifelse(is.na(DK_INC), DK_RINC, DK_INC),
+    ES_CINC = ifelse(is.na(ES_INC), ES_RINC, ES_INC),
+    FI_CINC = ifelse(is.na(FI_INC), FI_RINC, FI_INC),
+    FR_CINC = ifelse(is.na(FR_INC), FR_RINC, FR_INC),
+    HR_CINC = ifelse(is.na(HR_INC), HR_RINC, HR_INC),
+    HU_CINC = ifelse(is.na(HU_INC), HU_RINC, HU_INC),
+    IN_CINC = ifelse(is.na(IN_INC), IN_RINC, IN_INC),
+    IS_CINC = ifelse(is.na(IS_INC), IS_RINC, IS_INC),
+    IT_CINC = ifelse(is.na(IT_INC), IT_RINC, IT_INC),
+    JP_CINC = ifelse(is.na(JP_INC), JP_RINC, JP_INC),
+    KR_CINC = ifelse(is.na(KR_INC), KR_RINC, KR_INC),
+    LT_CINC = ifelse(is.na(LT_INC), LT_RINC, LT_INC),
+    NO_CINC = ifelse(is.na(NO_INC), NO_RINC, NO_INC),
+    NZ_CINC = ifelse(is.na(NZ_INC), NZ_RINC, NZ_INC),
+    PH_CINC = ifelse(is.na(PH_INC), PH_RINC, PH_INC),
+    RU_CINC = ifelse(is.na(RU_INC), RU_RINC, RU_INC),
+    SE_CINC = ifelse(is.na(SE_INC), SE_RINC, SE_INC),
+    SI_CINC = ifelse(is.na(SI_INC), SI_RINC, SI_INC),
+    SK_CINC = ifelse(is.na(SK_INC), SK_RINC, SK_INC),
+    TH_CINC = ifelse(is.na(TH_INC), TH_RINC, TH_INC),
+    TW_CINC = ifelse(is.na(TW_INC), TW_RINC, TW_INC),
+    US_CINC = ifelse(is.na(US_INC), US_RINC, US_INC),
+    ZA_CINC = ifelse(is.na(ZA_INC), ZA_RINC, ZA_INC)
+  ) %>%
+  mutate(
+    AT_ZINC = (AT_CINC - mean(AT_CINC, na.rm = TRUE)) / sd(AT_CINC, na.rm = TRUE),
+    AU_ZINC = (AU_CINC - mean(AU_CINC, na.rm = TRUE)) / sd(AU_CINC, na.rm = TRUE),
+    CH_ZINC = (CH_CINC - mean(CH_CINC, na.rm = TRUE)) / sd(CH_CINC, na.rm = TRUE),
+    CN_ZINC = (CN_CINC - mean(CN_CINC, na.rm = TRUE)) / sd(CN_CINC, na.rm = TRUE),
+    DE_ZINC = (DE_CINC - mean(DE_CINC, na.rm = TRUE)) / sd(DE_CINC, na.rm = TRUE),
+    DK_ZINC = (DK_CINC - mean(DK_CINC, na.rm = TRUE)) / sd(DK_CINC, na.rm = TRUE),
+    ES_ZINC = (ES_CINC - mean(ES_CINC, na.rm = TRUE)) / sd(ES_CINC, na.rm = TRUE),
+    FI_ZINC = (FI_CINC - mean(FI_CINC, na.rm = TRUE)) / sd(FI_CINC, na.rm = TRUE),
+    FR_ZINC = (FR_CINC - mean(FR_CINC, na.rm = TRUE)) / sd(FR_CINC, na.rm = TRUE),
+    HR_ZINC = (HR_CINC - mean(HR_CINC, na.rm = TRUE)) / sd(HR_CINC, na.rm = TRUE),
+    HU_ZINC = (HU_CINC - mean(HU_CINC, na.rm = TRUE)) / sd(HU_CINC, na.rm = TRUE),
+    IN_ZINC = (IN_CINC - mean(IN_CINC, na.rm = TRUE)) / sd(IN_CINC, na.rm = TRUE),
+    IS_ZINC = (IS_CINC - mean(IS_CINC, na.rm = TRUE)) / sd(IS_CINC, na.rm = TRUE),
+    IT_ZINC = (IT_CINC - mean(IT_CINC, na.rm = TRUE)) / sd(IT_CINC, na.rm = TRUE),
+    JP_ZINC = (JP_CINC - mean(JP_CINC, na.rm = TRUE)) / sd(JP_CINC, na.rm = TRUE),
+    KR_ZINC = (KR_CINC - mean(KR_CINC, na.rm = TRUE)) / sd(KR_CINC, na.rm = TRUE),
+    LT_ZINC = (LT_CINC - mean(LT_CINC, na.rm = TRUE)) / sd(LT_CINC, na.rm = TRUE),
+    NO_ZINC = (NO_CINC - mean(NO_CINC, na.rm = TRUE)) / sd(NO_CINC, na.rm = TRUE),
+    NZ_ZINC = (NZ_CINC - mean(NZ_CINC, na.rm = TRUE)) / sd(NZ_CINC, na.rm = TRUE),
+    PH_ZINC = (PH_CINC - mean(PH_CINC, na.rm = TRUE)) / sd(PH_CINC, na.rm = TRUE),
+    RU_ZINC = (RU_CINC - mean(RU_CINC, na.rm = TRUE)) / sd(RU_CINC, na.rm = TRUE),
+    SE_ZINC = (SE_CINC - mean(SE_CINC, na.rm = TRUE)) / sd(SE_CINC, na.rm = TRUE),
+    SI_ZINC = (SI_CINC - mean(SI_CINC, na.rm = TRUE)) / sd(SI_CINC, na.rm = TRUE),
+    SK_ZINC = (SK_CINC - mean(SK_CINC, na.rm = TRUE)) / sd(SK_CINC, na.rm = TRUE),
+    TH_ZINC = (TH_CINC - mean(TH_CINC, na.rm = TRUE)) / sd(TH_CINC, na.rm = TRUE),
+    TW_ZINC = (TW_CINC - mean(TW_CINC, na.rm = TRUE)) / sd(TW_CINC, na.rm = TRUE),
+    US_ZINC = (US_CINC - mean(US_CINC, na.rm = TRUE)) / sd(US_CINC, na.rm = TRUE),
+    ZA_ZINC = (ZA_CINC - mean(ZA_CINC, na.rm = TRUE)) / sd(ZA_CINC, na.rm = TRUE)
+  )
+
+# Combining Z-score variables into a single column
+Assignment_3 <- Assignment_3 %>%
+  rowwise() %>%   # Operate on each row individually
+  mutate(zincs20 = mean(c_across(contains("_ZINC")), na.rm = TRUE)) %>% # Create 'zincs20', ignoring NA values
+  ungroup()   # Return to standard operation (not rowwise)
+```
+
+-   **place20**: Place of living: urban - rural (categorical variable)
+
+    -   1 = A big city
+
+    -   2 = The suburbs or outskirts of a big city
+
+    -   3 = A town or small city
+
+    -   4 = A country village
+
+    -   5 = A farm or home in the country
+
+-   **SEX:** The Respondent's gender
+
+    -   1 = Male
+
+    -   2 = Female
+
+-   **AGE:** The respondent's age (continuous)
+
+-   **EDUCYRS:** The respondent's cumulative years of formal education (continuous)
+
+-   **WORK:** Currently, formerly, or never in paid work
+
+    -   1 = Currently in paid work
+
+    -   2 = Formerly in paid work
+
+    -   3 = Never had paid work
+
+-   **WRKHRS:** The respondent's hours worked weekly (continuous)
+
+Let's clean up the data, removing -9s, -8s, -1s, and replacing with NA values
+
+```{r cleaning data}
+#remove all -9, -8, -4, -1 and replace with NA values. recode the categorical variables.
+Assignment_3 <- Assignment_3 %>%
+  mutate(AGE = ifelse(AGE < 0 , NA, AGE)) %>%
+  mutate(EDUCYRS = ifelse(EDUCYRS < 0 , NA, EDUCYRS)) %>%
+  mutate(WRKHRS = ifelse(WRKHRS < 0 , NA, WRKHRS)) %>%
+  mutate(SEX = factor(SEX,
+                      levels = c(1, 2, -9),
+                      labels = c("Male",
+                                 "Female",
+                                 NA))) %>%
+  mutate(WORK = factor(WORK,
+                       levels = c(1, 2, 3, -9, -1),
+                       labels = c("Currently in paid work",
+                                  "Formerly in paid work",
+                                  "Never had paid work",
+                                  NA,
+                                  NA))) %>%
+  mutate(place20 = factor(place20, 
+                          levels = c(1, 2, 3, 4, 5, -9, -1), 
+                          labels = c("A big city", 
+                                     "The suburbs or outskirts of a big city", 
+                                     "A town or small city", 
+                                     "A country village", 
+                                     "A farm or home in the country",
+                                     NA,
+                                     NA)))
+```
+
+Now let's take a look at the distribution and measures of central tendency of the variables:
+
+```{r distributions}
+#zincs20
+summary(Assignment_3$zincs20)
+hist_zinc <- ggplot(Assignment_3, aes(x = zincs20)) +
+  geom_histogram(fill = "lightblue") +
+  ggtitle("Histogram of Income Z-Scores") +
+  labs(x = "Income Z-score", y = "Frequency") +
+  theme_minimal() 
+print(hist_zinc)
+qq_zinc<- ggplot(Assignment_3, aes(sample = zincs20)) +
+  stat_qq() +
+  stat_qq_line() +
+  labs(title = "Income Z-Scores") +
+  theme_minimal()
+print(qq_zinc)
+
+#AGE
+summary(Assignment_3$AGE)
+hist_age <- ggplot(Assignment_3, aes(x = AGE)) +
+  geom_histogram(fill = "lightgreen") +
+  ggtitle("Histogram of Age") +
+  labs(x = "Age", y = "Frequency") +
+  theme_minimal()
+print(hist_age)
+qq_age <- ggplot(Assignment_3, aes(sample = AGE)) +
+  stat_qq() +
+  stat_qq_line() +
+  labs(title = "Age") +
+  theme_minimal()
+print(qq_age)
+
+#EDUCYRS
+summary(Assignment_3$EDUCYRS)
+hist_edu <- ggplot(Assignment_3, aes(x = EDUCYRS)) +
+  geom_histogram(fill = "darkblue") +
+  ggtitle("Histogram of Education") +
+  labs(x = "Education (Years)", y = "Frequency") +
+  theme_minimal()
+print(hist_edu)
+qq_edu <- ggplot(Assignment_3, aes(sample = EDUCYRS)) +
+  stat_qq() +
+  stat_qq_line() +
+  labs(title = "Education (Years)") +
+  theme_minimal()
+print(qq_edu)
+
+#WRKHRS
+summary(Assignment_3$WRKHRS)
+hist_wrk <- ggplot(Assignment_3, aes(x = WRKHRS)) +
+  geom_histogram(fill = "forestgreen") +
+  ggtitle("Histogram of Work Hours") +
+  labs(x = "Work Hours", y = "Frequency") +
+  theme_minimal()
+print(hist_wrk)
+qq_wrk <- ggplot(Assignment_3, aes(sample = WRKHRS)) +
+  stat_qq() +
+  stat_qq_line() +
+  labs(title = "Work Hours") +
+  theme_minimal()
+print(qq_wrk)
+
+#Gender
+gender_bar <- ggplot(Assignment_3, aes(x = SEX, fill = SEX)) +
+  geom_bar() +
+  ggtitle("Gender") +
+  labs(x = "Gender", y = "Frequency" , fill = "Gender") +
+  theme_minimal() +
+  coord_flip() +
+  geom_text(aes(label = after_stat(count)), stat = "count", position = position_stack(vjust = 0.5), color = "black") +
+  scale_fill_brewer(palette = "Set2") 
+print(gender_bar)
+
+#Work
+work_bar <- ggplot(Assignment_3, aes(x = WORK, fill = WORK)) +
+  geom_bar() +
+  ggtitle("Work Status") +
+  labs(x = "Work Status", y = "Frequency", fill = "Work Status") +
+  theme_minimal() +
+  coord_flip() +
+  geom_text(aes(label = after_stat(count)), stat = "count", position = position_stack(vjust = 0.5), color = "black") +
+  scale_fill_brewer(palette = "Set3")
+print(work_bar)
+
+#place20
+place20_bar <- ggplot(Assignment_3, aes(x = place20, fill = place20)) +
+  geom_bar() +
+  ggtitle("Place of Living") +
+  labs(x = "Place of Living", y = "Frequency", fill = "Place of Living") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 20, hjust = 1)) +
+  geom_text(aes(label = after_stat(count)), stat = "count", position = position_stack(vjust = 0.5), color = "black") +
+  scale_fill_brewer(palette = "Set3")
+
+print(place20_bar)
+```

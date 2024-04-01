@@ -1,0 +1,523 @@
+---
+title: "Assignment 2"
+subtitle: "GEO865 Advanced Quantitative Methods. – SS24"
+author: "Leo Baldiga"
+date: "2024-02-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(haven)
+library(lavaan)
+library(psych)
+library(tidyr)
+library(dplyr)
+library(dm)
+library(writexl)
+library(kableExtra)
+library(webshot2)
+library(ggplot2)
+library(likert)
+library(knitr)
+library(stringr)
+library(scales)
+library(gridExtra)
+```
+
+# Selected Variables
+
+For this assignment, I selected Thailand and the following variables from the ISSP Environment IV 2020 data set on attitudes towards the environment:
+
+Likert Variables were measured on a 5-point scale, with 1 being "strongly agree" and 5 being "strongly disagree" with the following statements, 1 indicating the least concern for the environment and 5 indicating the most concern.
+
+-   **threxg20**: Many of the claims about environmental threats are exaggerated.
+-   **prghrm20**: People worry too much about human progress harming the environment.
+-   **worent20**: We worry too much about the future of the environment and not enough about prices and jobs today.
+-   **morimp20**: There are more important things to do in life than protect the environment.
+-   **others20**: There is no point in doing what I can for the environment unless others do the same.
+
+The following demographic and socioeconomic variables are also included in the dataset: - **TH_RINC**: Respondent's income Monthly gross income in Thai Baht (THB) (continuous variable)
+
+-   **TH_INC**: Respondent's household Monthly gross income in Thai Baht (THB) (continuous variable)
+
+-   **place20**: Place of living: urban - rural (categorical variable)
+
+    -   1 = A big city
+
+    -   2 = The suburbs or outskirts of a big city
+
+    -   3 = A town or small city
+
+    -   4 = A country village
+
+    -   5 = A farm or home in the country
+
+-   **TH_REG:** Region of living (categorical variable)
+
+    -   1 = Bangkok
+
+    -   2 = Central
+
+    -   3 = North
+
+    -   4 = Northeast
+
+    -   5 = South
+
+-   **SEX:** The Respondent's gender
+
+    -   1 = Male
+
+    -   2 = Female
+
+-   **AGE:** The respondent's age (continuous)
+
+-   **EDUCYRS:** The respondent's cumulative years of formal education (continuous)
+
+------------------------------------------------------------------------
+
+# Descriptive Statistics, Missing Data, Visuals
+
+The Total Thailand sample size is (n=1498). Selected likert variables were recoded to remove NA values using the following function:
+
+```{r load_data, echo= F}
+load(".RData")
+
+postcoded_subset <- Postcoded %>%
+  filter(country == "Thailand") %>%
+  select(threxg20, worent20, prghrm20, morimp20, others20, TH_RINC, TH_INC, place20, TH_REG, SEX, AGE, EDUCYRS)
+```
+
+```{r Remove out of Range function}
+remove_out_of_range <- function(data, likert_variables) {
+  data %>% 
+    mutate(across(all_of(likert_variables), 
+                  ~ifelse(as.numeric(as.character(.)) > 5 | 
+                          as.numeric(as.character(.)) < 1, 
+                          NA, as.numeric(as.character(.)))))
+}
+```
+
+```{r Data Wrangling}
+Assignment_2_vars <- remove_out_of_range(
+  data = postcoded_subset,
+  likert_variables= c("threxg20", "worent20","prghrm20", "morimp20", "others20")) %>%
+  mutate(TH_RINC = ifelse(TH_RINC < 0 , NA, TH_RINC)) %>%
+  mutate(TH_INC = ifelse(TH_INC < 0 , NA, TH_INC)) %>%
+  mutate(AGE = ifelse(AGE < 0 , NA, AGE)) %>%
+  mutate(EDUCYRS = ifelse(EDUCYRS < 0 , NA, EDUCYRS)) %>%
+  mutate(place20 = factor(place20, 
+                          levels = c(1, 2, 3, 4, 5, -9, -1), 
+                          labels = c("A big city", 
+                                     "The suburbs or outskirts of a big city", 
+                                     "A town or small city", 
+                                     "A country village", 
+                                     "A farm or home in the country",
+                                     NA,
+                                     NA))) %>%
+  mutate(TH_REG = factor(TH_REG,
+                         levels = c(1, 2, 3, 4, 5, -2),
+                         labels = c("Bangkok", 
+                                    "North", 
+                                    "Northeast", 
+                                    "Central", 
+                                    "South",
+                                    NA))) %>%
+  mutate(SEX = factor(SEX,
+                      levels = c(1, 2, -9),
+                      labels = c("Male",
+                                 "Female",
+                                 NA)))
+```
+
+\
+Then, the following code was used to generate tables of descriptive statistics to make sure there are no outliers remaining in the data, count the NA values, and to see the central tendency, skew, etc. The tables and plots were generated using the following code:
+
+```{r desc_table, fig.width=10, fig.height=5, warning=FALSE}
+environmental_concern_desc_th <- Assignment_2_vars %>%
+  select(worent20, prghrm20, morimp20, others20, threxg20, TH_RINC, TH_INC, AGE, EDUCYRS, SEX, TH_REG, place20) %>%
+  describe(na.rm = TRUE)
+
+environmental_concern_desc_th_NA <- Assignment_2_vars %>%
+  select(worent20, prghrm20, morimp20, others20, threxg20, TH_RINC, TH_INC, AGE, EDUCYRS, SEX, TH_REG, place20) %>%
+  summarise_all(~sum(is.na(.)))
+
+kable(environmental_concern_desc_th, caption = "Descriptive Statistics") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = T)
+
+kable(environmental_concern_desc_th_NA, caption = "Missing Values") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = T)
+
+#a qqplot of TH_RINC
+qq_th_rinc <- ggplot(Assignment_2_vars, aes(sample = TH_RINC)) +
+  stat_qq() +
+  ggtitle("QQ Plot of Monthly Gross Income in Thai Baht (THB)") +
+  theme_minimal()
+
+#a light blue histogram and bins of 3600 THB, or Approximately 100 USD
+hist_th_rinc <- ggplot(Assignment_2_vars, aes(x = TH_RINC)) +
+  geom_histogram(binwidth = 3600, fill = "lightblue") +
+  ggtitle("Histogram of Monthly Gross Income in Thai Baht (THB)") +
+  labs(x = "Monthly Gross Income in Thai Baht (THB)", y = "Frequency") +
+  theme_minimal()
+```
+
+The mean values for all likert variables range from 2.7 to 3.1, which suggests that on average, respondents' environmental concerns are moderate, and the trimmed means are very close to the actual means, which implies that the influence of outliers on the mean is minimal. The skewness values for worent20, prghrm20, and morimp20 are positive but not very high, indicating a slight tendency for respondents to rate their environmental concerns towards the higher end of the scale. threxg20 has a moderate negative skewness, suggesting that responses for this variable are more frequently on the lower end of the scale. The skew and kurtosis for TH_RINC are very high, indicating that the distribution of income is not normal and there are some severe outliers.
+
+The missing values for TH_RINC and TH_INC are quite high at 32% and 45% respectively, which is not ideal. The missing values for the likert variables are mostly very low, which is good. Age, Sex, Region, and Place all don't have any missing values, whereas education has 27.
+
+For Income, it makes the most sense to make one combined variable for household income to reduce the number of missing values. The histogram of TH_RINC shows a very left-skewed distribution of income. Let's remove some of those extreme observations. Let's also make income categories of "low", "medium", and "high" income.
+
+```{r create_income_cat}
+Assignment_2_vars <- Assignment_2_vars %>%
+  mutate(INC = ifelse(is.na(TH_INC), TH_RINC, TH_INC)) %>%
+  mutate(INC = ifelse(INC >= 200000 , NA, INC)) %>%
+  mutate(INC_cat = ifelse(INC < 15000, "Low", ifelse(INC >= 15000 & INC <= 30000, "Medium", "High"))) %>% #group 'em
+  mutate(INC_cat = factor(INC_cat, levels = c("Low", "Medium", "High"))) #order the levels
+
+Income <- Assignment_2_vars %>%
+  select(TH_RINC, TH_INC, INC) %>%
+  describe(na.rm = TRUE)
+
+qq_inc <- ggplot(Assignment_2_vars, aes(sample = INC)) +
+  stat_qq() +
+  ggtitle("QQ Plot of Combined Monthly Gross Income in Thai Baht (THB)") +
+  labs(x = "Theoretical Quantiles", y = "Income") +
+  theme_minimal()
+
+#a light blue histogram and bins of 3600 THB, or Approximately 100 USD
+hist_inc <- ggplot(Assignment_2_vars, aes(x = INC)) +
+  geom_histogram(binwidth = 3600, fill = "lightblue") +
+  ggtitle("Histogram of Combined Monthly Gross Income in Thai Baht (THB)") +
+  labs(x = "Monthly Gross Income in Thai Baht (THB)", y = "Frequency") +
+  theme_minimal() 
+
+#a barplot of INC_cat
+inc_cat_bar <- ggplot(Assignment_2_vars, aes(x = INC_cat, fill = INC_cat)) +
+  geom_bar() +
+  ggtitle("Income Categories") +
+  labs(x = "Income Categories", y = "Frequency", fill = "Income Categories") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_text(aes(label = after_stat(count)), stat = "count", position = position_stack(vjust = 0.5), color = "black") +
+  scale_fill_brewer(palette = "Set3")
+```
+
+```{r print_tables, echo=FALSE, fig.width=10, fig.height=5,  warning=FALSE}
+kable(Income, caption = "Income Descriptives") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = T)
+print(qq_inc)
+print(hist_inc)
+print(inc_cat_bar)
+```
+
+That looks a bit better, and we gained 51 more observations. The QQ plot doesn't look much better, and the histogram shows a skill very left skewed, albeit slightly more normal distribution of income. The skewness and kurtosis values for INC are still high, but not as high as before.
+
+Let's look at the distribution of the other variables using QQ plots, histograms, and categorical barplots:\
+
+```{r create_plots, fig.width=10, fig.height=5, warning=FALSE}
+#categorical barplot for place20
+place20_bar <- ggplot(Assignment_2_vars, aes(x = place20, fill = place20)) +
+  geom_bar() +
+  ggtitle("Place of Living") +
+  labs(x = "Place of Living", y = "Frequency", fill = "Place of Living") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 20, hjust = 1)) +
+  geom_text(aes(label = after_stat(count)), stat = "count", position = position_stack(vjust = 0.5), color = "black") +
+  scale_fill_brewer(palette = "Set3")
+
+#Categorical barplot for TH_REG
+th_reg_bar <- ggplot(Assignment_2_vars, aes(x = TH_REG, fill = TH_REG)) +
+  geom_bar() +
+  ggtitle("Region of Living") +
+  labs(x = "Region of Living", y = "Frequency", fill = "Region of Living") +
+  theme_minimal() +
+  geom_text(aes(label = after_stat(count)), stat = "count", position = position_stack(vjust = 0.5), color = "black") +
+  scale_fill_brewer(palette = "Set3")
+
+#Barplot of SEX
+gender_bar <- ggplot(Assignment_2_vars, aes(x = SEX, fill = SEX)) +
+  geom_bar() +
+  ggtitle("Gender") +
+  labs(x = "Gender", y = "Frequency" , fill = "Gender") +
+  theme_minimal() +
+  coord_flip() +
+  geom_text(aes(label = after_stat(count)), stat = "count", position = position_stack(vjust = 0.5), color = "black") +
+  scale_fill_brewer(palette = "Set2")
+
+#Histogram of Age
+Age_hist <- ggplot(Assignment_2_vars, aes(x = AGE)) +
+  geom_histogram(binwidth = 10, fill = "lightblue") +
+  ggtitle("Histogram of Age") +
+  labs(x = "Age", y = "Frequency") +
+  theme_minimal()
+
+#qq plot of Age
+qq_th_age <- ggplot(Assignment_2_vars, aes(sample = AGE)) +
+  stat_qq() +
+  ggtitle("QQ Plot of Age") +
+  theme_minimal()
+
+#make age categories in a new variable called age_cat
+Assignment_2_vars <- Assignment_2_vars %>%
+  mutate(age_cat = ifelse(AGE < 30, "18-29", ifelse(AGE >= 30 & AGE < 40, "30-39", ifelse(AGE >= 40 & AGE < 50, "40-49", ifelse(AGE >= 50 & AGE < 60, "50-59", ifelse(AGE >= 60 & AGE < 70, "60-69", ifelse(AGE >= 70 & AGE < 80, "70-79", "80+"))))))) %>% #Group 'Em!
+  mutate(age_cat = factor(age_cat, levels = c("18-29", "30-39", "40-49", "50-59", "60-69", "70-79", "80+"))) #Order Up!
+
+#Barplot of Age Categories
+age_cat_bar <- ggplot(Assignment_2_vars, aes(x = age_cat, fill = age_cat)) +
+  geom_bar() +
+  ggtitle("Age Categories") +
+  labs(x = "Age Categories", y = "Frequency", fill = "Age Categories") +
+  theme_minimal() +
+  geom_text(aes(label = after_stat(count)), stat = "count", position = position_stack(vjust = 0.5), color = "black") +
+  scale_fill_brewer(palette = "Set3") 
+
+#make categories of education in a new variable called educyrs_cat
+Assignment_2_vars <- Assignment_2_vars %>%
+  mutate(educyrs_cat = ifelse(EDUCYRS < 6, "0-5", ifelse(EDUCYRS >= 6 & EDUCYRS < 9, "6-8", ifelse(EDUCYRS >= 9 & EDUCYRS < 12, "9-11", ifelse(EDUCYRS >= 12 & EDUCYRS < 15, "12-14", ifelse(EDUCYRS >= 15 & EDUCYRS < 18, "15-17", ifelse(EDUCYRS >= 18 & EDUCYRS < 21, "18-20", "21+"))))))) %>% #Group 'Em!
+  mutate(educyrs_cat = factor(educyrs_cat, levels = c("0-5", "6-8", "9-11", "12-14", "15-17", "18-20", "21+"))) #Order Up!
+
+#Barplot of Education Categories
+edu_cat_bar <- ggplot(Assignment_2_vars, aes(x = educyrs_cat, fill = educyrs_cat)) +
+  geom_bar() +
+  ggtitle("Years of Education Completed") +
+  labs(x = "Years", y = "Frequency", fill = "Years of Education Completed") +
+  theme_minimal() +
+  geom_text(aes(label = after_stat(count)), stat = "count", position = position_stack(vjust = 0.5), color = "black") +
+  scale_fill_brewer(palette = "Set3")
+```
+
+```{r print_desc_table, echo=FALSE, fig.width=10, fig.height=5,  warning=FALSE}
+print(place20_bar)
+print(th_reg_bar)
+print(gender_bar)
+print(age_cat_bar)
+print(qq_th_age)
+print(edu_cat_bar)
+```
+
+------------------------------------------------------------------------
+
+# Likert Variables
+
+Let's look at the actual distribution of the likert variables using the 'likert' package to create a stacked 100% barplot:
+
+```{r likert_dist, fig.width=10, fig.height=5, warning=FALSE}
+#remove observations with NA values and pivot longer
+df_long <- Assignment_2_vars %>%
+  pivot_longer(cols = c("worent20", "prghrm20", "morimp20", "others20", "threxg20"), names_to = "Item", values_to = "response") %>%
+  filter(!is.na(response))
+
+#create a summary table that works with the likert package
+summary_table <- df_long %>%
+  group_by(Item, response) %>%
+  summarise(frequency = n(), .groups = 'drop') %>%
+  group_by(Item) %>%
+  mutate(percent = frequency / sum(frequency) * 100) %>%
+  ungroup() %>%
+  select(Item, response, percent) %>%
+  pivot_wider(names_from = response, values_from = percent, values_fill = list(percent = 0)) %>%
+  mutate(Item = factor(Item,
+    levels = c("threxg20", "worent20", "prghrm20", "morimp20", "others20"),
+    labels = c("Many of the claims about environmental threats are exaggerated.",
+               "We worry too much about the future of the environment and not enough about prices and jobs today.",
+               "People worry too much about human progress harming the environment.",
+               "There are more important things to do in life than protect the environment.",
+               "There is no point in doing what I can for the environment unless others do the same."
+  )))
+#rename columns
+summary_table <- summary_table  %>% 
+  rename("strong agree" = "1", "agree" = "2", "neutral" = "3", "disagree" = "4", "strongly disagree" = "5")
+
+#get total n for observations that contain valid data for all likert variables
+n<- df_long %>%
+  group_by(Item) %>%
+  summarise(n = n())
+
+#plot the likert distributions
+plot(likert(summary = summary_table), legend.position="right", centered = FALSE) +
+  ggtitle("Distributions of Likert Responses, n=1339") +
+  theme_minimal() +
+  labs(y = "Percent of Responses") + 
+  scale_fill_brewer(palette = "RdYlBu")
+
+```
+
+The total valid sample size for the likert variables is 1339, which is 89.4% of the total sample size. The distributions of the likert variables are fairly normal, with the majority of responses falling in the "agree" and "neutral" categories. The "strongly disagree" category has the lowest percentage of responses for all variables, which is consistent with the mean values for the variables, which are all between 2.7 and 3.1. Most people seem to have fairly moderate environmental concerns, with a slight tendency to agree with the statements, indicating less concern.
+
+Finally, let's combine the variables into a single index that indicates an overall level of environmental concern. We will use the mean of the variables, as they are all on the same scale and have similar means and standard deviations. We will then use the following code to create a new variable called "environmental_concern" that is the mean of the likert variables across each row:
+
+```{r create_index}
+Assignment_2_vars <- Assignment_2_vars %>%
+  mutate(env_concern = rowMeans(select(Assignment_2_vars, threxg20, worent20, prghrm20, morimp20, others20), na.rm = TRUE))
+```
+
+Let's look at a tables of means for the likert variables, and the index variable by region of living and place of living:
+
+```{r means_table, warning=FALSE}
+#table of means where the first column is the region and subsequent columns are the means for each likert variable:
+means_table_reg <- Assignment_2_vars %>%
+  group_by(TH_REG) %>%
+  summarise(across(c(threxg20, worent20, prghrm20, morimp20, others20, env_concern), mean, na.rm = TRUE))
+
+#for Place of Living
+means_table_place <- Assignment_2_vars %>%
+  group_by(place20) %>%
+  summarise(across(c(threxg20, worent20, prghrm20, morimp20, others20, env_concern), mean, na.rm = TRUE))
+
+#For Sex
+means_table_sex <- Assignment_2_vars %>%
+  group_by(SEX) %>%
+  summarise(across(c(threxg20, worent20, prghrm20, morimp20, others20, env_concern), mean, na.rm = TRUE))
+
+#for Income category
+means_table_inc <- Assignment_2_vars %>%
+  group_by(INC_cat) %>%
+  summarise(across(c(threxg20, worent20, prghrm20, morimp20, others20, env_concern), mean, na.rm = TRUE))
+
+#for Education category
+means_table_edu <- Assignment_2_vars %>%
+  group_by(educyrs_cat) %>%
+  summarise(across(c(threxg20, worent20, prghrm20, morimp20, others20, env_concern), mean, na.rm = TRUE))
+
+#for Age category
+means_table_age <- Assignment_2_vars %>%
+  group_by(age_cat) %>%
+  summarise(across(c(threxg20, worent20, prghrm20, morimp20, others20, env_concern), mean, na.rm = TRUE))
+```
+
+```{r print_means_table, echo=FALSE}
+means_table_reg %>%
+  kable(caption = "Means of Likert Variables by Region of Living") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = T)
+means_table_place %>%
+  kable(caption = "Means of Likert Variables by Place of Living") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = T)
+means_table_sex %>%
+  kable(caption = "Means of Likert Variables by Sex") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = T)
+means_table_inc %>%
+  kable(caption = "Means of Likert Variables by Income Category") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = T)
+means_table_edu %>%
+  kable(caption = "Means of Likert Variables by Education Category") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = T)
+means_table_age %>%
+  kable(caption = "Means of Likert Variables by Age Category") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = T)
+```
+
+These tables of means start to give us an idea of how environmental concern in aggregate varies by each of these categories. now that we've seen that, let's move on to some hypothesis testing to see if any of the observed differences are statistically significant.
+
+------------------------------------------------------------------------
+
+# Hypothesis testing
+
+We will test the following hypotheses:
+
+```{r, echo=FALSE}
+#a table with two columns, H0 and HA, and 6 rows, one for each hypothesis
+hypotheses <- tibble(
+  H0 = c("Environmental concern does not vary by region of living", 
+         "Environmental concern does not vary by place of living", 
+         "Environmental concern does not vary by household income", 
+         "Environmental concern does not vary by years of education", 
+         "Environmental concern does not vary by age", 
+         "Environmental concern does not vary by sex"),
+  HA = c("Environmental concern varies by region of living",
+         "Environmental concern varies by place of living",
+         "Environmental concern varies by household income",
+         "Environmental concern varies by years of education",
+         "Environmental concern varies by age",
+         "Environmental concern varies by sex"),
+  Variable = c("TH_REG", "place20", "INC_cat", "educyrs_cat", "AGE", "SEX"),
+  Test = c("ANOVA", "ANOVA", "ANOVA", "ANOVA", "ANOVA", "T-Test"))
+
+kable(hypotheses, caption = "Hypotheses") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = T) 
+```
+
+We will use the following code to test the hypotheses:
+
+```{r hypothesis_testing, warning=FALSE}
+#Calculate the population mean for comparison
+population_mean <- mean(Assignment_2_vars$env_concern, na.rm = TRUE)
+
+#ANOVA for TH_REG
+anova_reg <- aov(env_concern ~ TH_REG, data = Assignment_2_vars)
+reg_boxpolot <- ggplot(Assignment_2_vars, aes(x = TH_REG, y = env_concern)) +
+  geom_boxplot() +
+  ggtitle("Boxplot of Environmental Concern by Region of Living") +
+  labs(x = "Region of Living", y = "Environmental Concern") +
+ geom_hline(yintercept = population_mean, linetype = "dashed", color = "red") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set3")
+summary(anova_reg)
+print(reg_boxpolot)
+
+#ANOVA for place20
+anova_place <- aov(env_concern ~ place20, data = Assignment_2_vars)
+place_boxplot <- ggplot(Assignment_2_vars, aes(x = place20, y = env_concern)) +
+  geom_boxplot() +
+  ggtitle("Boxplot of Environmental Concern by Place of Living") +
+  labs(x = "Place of Living", y = "Environmental Concern") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_hline(yintercept = population_mean, col="red", linetype="dashed") +
+  theme_minimal()
+summary(anova_place)
+print(place_boxplot)
+
+#Anova for TH_INC
+#Make 3 income categories, low <15000, medium 15000-30000, high >30000
+anova_inc <- aov(env_concern ~ INC_cat, data = Assignment_2_vars)
+inc_boxplot <- ggplot(Assignment_2_vars, aes(x = INC_cat, y = env_concern)) +
+  geom_boxplot() +
+  ggtitle("Boxplot of Environmental Concern by Household Income") +
+  labs(x = "Household Income", y = "Environmental Concern") +
+  theme_minimal() +
+  geom_hline(yintercept = population_mean, col="red", linetype="dashed")
+summary(anova_inc)
+plot(inc_boxplot)
+
+#Anova for EDUCYRS
+anova_edu <- aov(env_concern ~ educyrs_cat, data = Assignment_2_vars)
+edu_boxplot <- ggplot(Assignment_2_vars, aes(x = educyrs_cat, y = env_concern)) +
+  geom_boxplot() +
+  ggtitle("Boxplot of Environmental Concern by Years of Education") +
+  labs(x = "Years of Education", y = "Environmental Concern") +
+  theme_minimal() +
+  geom_hline(yintercept = population_mean, col="red", linetype="dashed")
+summary(anova_edu)
+plot(edu_boxplot)
+
+#anova for AGE
+anova_age <- aov(env_concern ~ age_cat, data = Assignment_2_vars)
+age_boxplot <- ggplot(Assignment_2_vars, aes(x = age_cat, y = env_concern)) +
+  geom_boxplot() +
+  ggtitle("Boxplot of Environmental Concern by Age") +
+  labs(x = "Age", y = "Environmental Concern") +
+  theme_minimal() +
+  geom_hline(yintercept = population_mean, col="red", linetype="dashed")
+summary(anova_age)
+print(age_boxplot)
+
+#T-test for sex
+ttest_sex <- t.test(env_concern ~ SEX, data = Assignment_2_vars)
+sex_boxplot <- ggplot(Assignment_2_vars, aes(x=SEX, y=env_concern)) +
+  geom_boxplot() +
+  ggtitle("Boxplot of Environmental Concern by Sex") +
+  labs(x = "Sex", y = "Environmental Concern") +
+  theme_minimal() +
+  geom_hline(yintercept = population_mean, col="red", linetype="dashed")
+print(ttest_sex)
+print(sex_boxplot)
+```
+
+------------------------------------------------------------------------
+
+# Results
+
+The results of the ANOVA tests show that environmental concern varies highly significantly by region of living (F(4, 1454) = 47.04, p = \<2e-16), place of living (F(4, 1454) = 41.33, p = \<2e-16), and household income (F(2, 1043) = 46.14, p = \<2e-16). However, environmental concern does not vary as significantly by years of education (F(6, 1428) = 2.74, p = 0.0119). Results for age and gender tests did not reveal any significant differences in environmental concern. This gives us some evidence to support the hypotheses that environmental concern varies by region of living, place of living, and household income, which is the starting point for some more advanced modeling techniques!
+
+------------------------------------------------------------------------

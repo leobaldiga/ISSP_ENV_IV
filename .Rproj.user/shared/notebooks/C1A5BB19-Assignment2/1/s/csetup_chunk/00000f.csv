@@ -1,0 +1,103 @@
+"0","knitr::opts_chunk$set(echo = TRUE)"
+"0","library(haven)"
+"0","library(lavaan)"
+"2","This is lavaan 0.6-17
+lavaan is FREE software! Please report any bugs.
+"
+"0","library(psych)"
+"2","
+Attaching package: ‘psych’
+
+"
+"2","The following object is masked from ‘package:lavaan’:
+
+    cor2cov
+
+"
+"0","library(tidyr)"
+"0","library(dplyr)"
+"2","
+Attaching package: ‘dplyr’
+
+"
+"2","The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+"
+"2","The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+"
+"0","library(dm)"
+"2","Registered S3 methods overwritten by 'dbplyr':
+  method         from
+  print.tbl_lazy     
+  print.tbl_sql      
+"
+"2","
+Attaching package: ‘dm’
+
+"
+"2","The following object is masked from ‘package:stats’:
+
+    filter
+
+"
+"0","library(writexl)"
+"0","library(kableExtra)"
+"2","
+Attaching package: ‘kableExtra’
+
+"
+"2","The following object is masked from ‘package:dplyr’:
+
+    group_rows
+
+"
+"0","library(webshot2)"
+"0","library(ggplot2)"
+"2","
+Attaching package: ‘ggplot2’
+
+"
+"2","The following objects are masked from ‘package:psych’:
+
+    %+%, alpha
+
+"
+"0","library(likert)"
+"2","Loading required package: xtable
+"
+"2","
+Attaching package: ‘likert’
+
+"
+"2","The following object is masked from ‘package:dplyr’:
+
+    recode
+
+"
+"0","library(knitr)"
+"0","library(stringr)"
+"0","library(scales)"
+"2","
+Attaching package: ‘scales’
+
+"
+"2","The following objects are masked from ‘package:psych’:
+
+    alpha, rescale
+
+"
+"0","library(gridExtra)"
+"2","
+Attaching package: ‘gridExtra’
+
+"
+"2","The following object is masked from ‘package:dplyr’:
+
+    combine
+
+"

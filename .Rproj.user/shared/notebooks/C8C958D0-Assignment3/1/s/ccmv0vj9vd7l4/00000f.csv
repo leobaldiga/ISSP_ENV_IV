@@ -1,0 +1,6 @@
+"0","#Histograms and QQ plots for continuous variables"
+"0","#central tendency, distribution, skewness of continuous variables"
+"0","subset<- Assignment_3 %>%"
+"0","  select(zincs20, AGE, EDUCYRS, WRKHRS)"
+"0",""
+"0","describe(subset)"
